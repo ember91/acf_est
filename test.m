@@ -13,6 +13,7 @@ function test()
   
   tic;
   r2 = acf_est(gauss);
+  r2 = [flipud(r2(2:end, :)); r2];
   t(2) = toc;
 
   disp(['Elapsed time ' num2str(t(1)) ' ' num2str(t(2)) 's']);

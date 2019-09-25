@@ -12,17 +12,17 @@
 // Agner Fog's vectorclass library headers
 #include "vectorclass/vectorclass.h"
 
+#include <iostream>
+
 /** Number of threads to spawn */
 const unsigned int THREADS = 4;
 
 // TODO list:
 // * Add support for floats, ints ...?
-// * To github
 // * Should work for row vector as well
-// * Remove vectorclass in favour of standard library?
-// * Detect maximum vectorization level (AVX, AVX2...)
+// * Remove vectorclass in favour of VcDevel/Vc?
+// * Detect maximum vectorization level (AVX, AVX2...). See above.
 // * Autodetect number of cores
-// * Generate only one sided spectra
 // * Add another estimation function?
 // * Handle exceptions gracefully when creating threads etc
 
@@ -60,8 +60,8 @@ void* calculate(const ThreadParams& p)
                 // Vectorized multiplication and summation
                 Vec4d v1 = Vec4d().load(p.x + c*p.N + n);
                 Vec4d v2 = Vec4d().load(p.x + c*p.N + n + k);
-                Vec4d mul = v1*v2;
-                s += horizontal_add(mul);
+                Vec4d prod = v1*v2;
+                s += horizontal_add(prod);
             }
 
             // Don't forget the last elements that didn't fit into a vector
@@ -74,8 +74,7 @@ void* calculate(const ThreadParams& p)
             
             // Divide by N and write twice, due to ACF symmetry
             double d = s/p.N;
-            p.y[c*(2*p.N - 1) + p.N + k - 1] = d;
-            p.y[c*(2*p.N - 1) + p.N - k - 1] = d;
+            p.y[c*p.N + k] = d;
         }
     }
     
@@ -96,7 +95,7 @@ mxArray* spawnThreads(const mxArray* vIn)
     mwSize C = dims[1];
     
     // Create output
-    mxArray* vOut = mxCreateDoubleMatrix(2*N - 1, C, mxREAL);
+    mxArray* vOut = mxCreateDoubleMatrix(N, C, mxREAL);
     
     // Allocate threads and their parameters
     std::thread threads[THREADS];
