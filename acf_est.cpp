@@ -4,6 +4,7 @@
  */
 
 #include <thread>
+#include <vector>
 
 // Matlab mex headers
 #include "matrix.h"
@@ -12,24 +13,21 @@
 // Agner Fog's vectorclass library headers
 #include "vectorclass/vectorclass.h"
 
-#include <iostream>
-
-/** Number of threads to spawn */
-const unsigned int THREADS = 4;
 
 // TODO list:
 // * Add support for floats, ints ...?
 // * Remove vectorclass in favour of VcDevel/Vc?
 // * Detect maximum vectorization level (AVX, AVX2...). See above.
-// * Autodetect number of cores
-// * Add another estimation function?
 // * Handle exceptions gracefully when creating threads etc
 // * Mex ID:s are wrong in mexErrMsgIdAndText
+// * Format code
+// * Add README
 
 /** Parameters to spawned threads */
 struct ThreadParams
 {
-    unsigned int index; /**< Thread index (0 <= index < THREADS) */
+    unsigned n_threads; /**< Total number of worker threads */
+    unsigned index;     /**< Thread index (0 <= index < n_threads) */
     mwSize N;           /**< Number of rows in matrix (Size of each ACF estimation) */
     mwSize C;           /**< Number of columns in matrix (Number of ACFs to estimate) */
     mxDouble* x;        /**< Input matrix [N, C] */
@@ -49,7 +47,7 @@ void* calculate(const ThreadParams& p)
     for (mwSize c = 0; c < p.C; ++c)
     {
         // Iterate through each input index
-        for (mwSize k = (c + p.index) % THREADS; k < p.N; k += THREADS)
+        for (mwSize k = (c + p.index) % p.n_threads; k < p.N; k += p.n_threads)
         {
             double s = 0.0; /**< Current sum */
 #if 1 // Enable for correct but slow implementation
@@ -82,6 +80,27 @@ void* calculate(const ThreadParams& p)
 }
 
 /**
+ * Detect number of CPU cores
+ * 
+ * \return Number of CPU cores
+ */
+unsigned detectNumberOfCores()
+{
+    /** Number of threads to spawn. Assume SMT for now. */
+    unsigned n = std::thread::hardware_concurrency();
+
+    // Sanity check
+    if (n == 0)
+        n = 1;
+
+    // Assume SMT if even number of threads
+    if (n % 2 == 0)
+        n /= 2;
+
+    return n;
+}
+
+/**
  * Spawn worker threads
  * 
  * \param vIn Input array
@@ -94,20 +113,23 @@ mxArray* spawnThreads(const mxArray* vIn)
     mwSize N = dims[0];
     mwSize C = dims[1];
 
-    // Create output
+    // Create output matrix
     mxArray* vOut = mxCreateDoubleMatrix(N, C, mxREAL);
 
     // Ensure that the first non-singular dimension is handled 
     if (N == 1 && C != 1)
         std::swap(C, N);
-    
+
+    unsigned n_threads = detectNumberOfCores();
+
     // Allocate threads and their parameters
-    std::thread threads[THREADS];
-    ThreadParams params[THREADS];
+    std::vector<std::thread> threads(n_threads);
+    std::vector<ThreadParams> params(n_threads);
     
     // Set parameters for each thread
-    for (unsigned int i = 0; i < THREADS; ++i)
+    for (unsigned i = 0; i < n_threads; ++i)
     {
+        params[i].n_threads = n_threads;
         params[i].index = i;
         params[i].N = N;
         params[i].C = C;
@@ -116,13 +138,13 @@ mxArray* spawnThreads(const mxArray* vIn)
     }
     
     // Start all threads
-    for (unsigned int i = 0; i < THREADS; ++i)
-        threads[i] = std::thread(calculate, params[i]);
+    for (unsigned i = 0; i < n_threads; ++i)
+        threads[i] = std::move(std::thread(calculate, params[i]));
 
     // Wait for all threads to finish
-    for (unsigned int i = 0; i < THREADS; ++i)
+    for (unsigned i = 0; i < n_threads; ++i)
         threads[i].join();
-    
+
     return vOut;
 }
 
