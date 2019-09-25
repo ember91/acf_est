@@ -18,7 +18,6 @@
 // * Remove vectorclass in favour of VcDevel/Vc?
 // * Detect maximum vectorization level (AVX, AVX2...). See above.
 // * Handle exceptions gracefully when creating threads etc
-// * Format code
 // * Add README
 // * Change formatter defaults
 
@@ -170,7 +169,7 @@ void checkArguments(int nlhs, mxArray **plhs, int nrhs, const mxArray **prhs)
         mexErrMsgIdAndTxt("acf_est:checkArguments", "Input matrix cannot be complex");
 
     if (mxGetNumberOfDimensions(prhs[0]) >= 4)
-        mexErrMsgIdAndTxt("acf_est:checkArguments", "cannot handle 4-dimensional matrices or greater");
+        mexErrMsgIdAndTxt("acf_est:checkArguments", "Cannot handle 4-dimensional matrices or greater");
 
     if (nlhs > 1)
         mexErrMsgIdAndTxt("acf_est:checkArguments", "One or zero outputs required");
