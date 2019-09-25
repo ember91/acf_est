@@ -18,7 +18,6 @@
 // * Remove vectorclass in favour of VcDevel/Vc?
 // * Detect maximum vectorization level (AVX, AVX2...). See above.
 // * Handle exceptions gracefully when creating threads etc
-// * Mex ID:s are wrong in mexErrMsgIdAndText
 // * Format code
 // * Add README
 // * Change formatter defaults
@@ -162,19 +161,19 @@ void checkArguments(int nlhs, mxArray **plhs, int nrhs, const mxArray **prhs)
     (void)(plhs);
 
     if (nrhs != 1)
-        mexErrMsgIdAndTxt("acf_est", "One input required");
+        mexErrMsgIdAndTxt("acf_est:checkArguments", "One input required");
 
     if (!mxIsDouble(prhs[0]))
-        mexErrMsgIdAndTxt("acf_est", "Input matrix must be of type double");
+        mexErrMsgIdAndTxt("acf_est:checkArguments", "Input matrix must be of type double");
 
     if (mxIsComplex(prhs[0]))
-        mexErrMsgIdAndTxt("acf_est", "Input matrix cannot be complex");
+        mexErrMsgIdAndTxt("acf_est:checkArguments", "Input matrix cannot be complex");
 
     if (mxGetNumberOfDimensions(prhs[0]) >= 4)
-        mexErrMsgIdAndTxt("acf_est", "cannot handle 4-dimensional matrices or greater");
+        mexErrMsgIdAndTxt("acf_est:checkArguments", "cannot handle 4-dimensional matrices or greater");
 
     if (nlhs > 1)
-        mexErrMsgIdAndTxt("acf_est", "One or zero outputs required");
+        mexErrMsgIdAndTxt("acf_est:checkArguments", "One or zero outputs required");
 }
 
 /**
