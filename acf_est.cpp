@@ -167,6 +167,9 @@ void checkArguments(int nlhs, mxArray **plhs, int nrhs, const mxArray **prhs)
     if (!mxIsDouble(prhs[0]))
         mexErrMsgIdAndTxt("acf_est", "Input matrix must be of type double");
 
+    if (mxIsComplex(prhs[0]))
+        mexErrMsgIdAndTxt("acf_est", "Input matrix cannot be complex");
+
     if (mxGetNumberOfDimensions(prhs[0]) >= 4)
         mexErrMsgIdAndTxt("acf_est", "cannot handle 4-dimensional matrices or greater");
 
