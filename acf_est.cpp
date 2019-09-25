@@ -19,12 +19,12 @@ const unsigned int THREADS = 4;
 
 // TODO list:
 // * Add support for floats, ints ...?
-// * Should work for row vector as well
 // * Remove vectorclass in favour of VcDevel/Vc?
 // * Detect maximum vectorization level (AVX, AVX2...). See above.
 // * Autodetect number of cores
 // * Add another estimation function?
 // * Handle exceptions gracefully when creating threads etc
+// * Mex ID:s are wrong in mexErrMsgIdAndText
 
 /** Parameters to spawned threads */
 struct ThreadParams
@@ -45,7 +45,7 @@ struct ThreadParams
  */
 void* calculate(const ThreadParams& p)
 {
-    // Iterate the columns allocated to this thread
+    // Iterate through each column
     for (mwSize c = 0; c < p.C; ++c)
     {
         // Iterate through each input index
@@ -93,9 +93,13 @@ mxArray* spawnThreads(const mxArray* vIn)
     const mwSize* dims = mxGetDimensions(vIn);
     mwSize N = dims[0];
     mwSize C = dims[1];
-    
+
     // Create output
     mxArray* vOut = mxCreateDoubleMatrix(N, C, mxREAL);
+
+    // Ensure that the first non-singular dimension is handled 
+    if (N == 1 && C != 1)
+        std::swap(C, N);
     
     // Allocate threads and their parameters
     std::thread threads[THREADS];
