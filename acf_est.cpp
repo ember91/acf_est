@@ -13,6 +13,10 @@
 // Agner Fog's vectorclass library headers
 #include "vectorclass/vectorclass.h"
 
+/** Set to 1 to spawn 0 threads. May be useful when debugging. */
+#define SINGLE_THREAD_MODE 0
+
+// Detect instruction set and set vector accordingly
 #if INSTRSET >= 10 // AVX512VL
 #define VEC_SINGLE_TYPE Vec16f
 #define VEC_DOUBLE_TYPE Vec8d
@@ -26,12 +30,13 @@
 #endif
 
 // TODO list:
-// * Add support for floats, ints ...?
-// * Detect maximum vectorization level (AVX, AVX2...). See above.
 // * Handle exceptions gracefully when creating threads etc
+// * Is it possible to add an exit signal from matlab?
 // * Add README
 // * Change formatter defaults
 // * License
+// * Instructions about vectorclass
+// * Documentation
 
 /** Parameters to spawned threads */
 struct ThreadParams
@@ -103,16 +108,16 @@ calculate(const ThreadParams &p)
         // Iterate through each input index
         for (mwSize k = (c + p.index) % p.n_threads; k < p.N; k += p.n_threads)
         {
-            double s = 0.0; /**< Current sum */
+            T s = 0.0; /**< Current sum */
 #ifndef VEC_SINGLE_TYPE
             // Simplest realization
             for (size_t n = 0; n < N - k; ++n)
                 s += x[n] * x[n + k];
 #else
-            int lim = (int)p.N - (int)k - vecSize<double>() + 1; /**< Iteration limit */
+            int lim = (int)p.N - (int)k - vecSize<T>() + 1; /**< Iteration limit */
             int n;
-            for (n = 0; n < lim; n += vecSize<double>())
-                core<double>(x + c * p.N + n, k, &s);
+            for (n = 0; n < lim; n += vecSize<T>())
+                core<T>(x + c * p.N + n, k, &s);
 
             // Don't forget the last elements that didn't fit into a vector
             for (; n < p.N - k; ++n)
@@ -153,6 +158,7 @@ unsigned detectNumberOfCores()
  * 
  * \param vIn Input array
  * \return Output array
+ * 
  */
 mxArray *spawnThreads(const mxArray *vIn)
 {
@@ -162,7 +168,12 @@ mxArray *spawnThreads(const mxArray *vIn)
     mwSize C = dims[1];
 
     // Create output matrix
-    mxArray *vOut = mxCreateDoubleMatrix(N, C, mxREAL);
+    mxClassID classId = mxUNKNOWN_CLASS;
+    if (mxIsSingle(vIn))
+        classId = mxSINGLE_CLASS;
+    else
+        classId = mxDOUBLE_CLASS;
+    mxArray *vOut = mxCreateNumericMatrix(N, C, classId, mxREAL);
 
     // Ensure that the first non-singular dimension is handled
     if (N == 1 && C != 1)
@@ -187,11 +198,25 @@ mxArray *spawnThreads(const mxArray *vIn)
 
     // Start all threads
     for (unsigned i = 0; i < n_threads; ++i)
-        threads[i] = std::move(std::thread(calculate<double>, params[i]));
+    {
+#if SINGLE_THREAD_MODE == 0
+        if (mxIsSingle(vIn))
+            threads[i] = std::move(std::thread(calculate<float>, params[i]));
+        else
+            threads[i] = std::move(std::thread(calculate<double>, params[i]));
+#else
+        if (mxIsSingle(vIn))
+            calculate<float>(params[i]);
+        else
+            calculate<double>(params[i]);
+#endif
+    }
 
-    // Wait for all threads to finish
+// Wait for all threads to finish
+#if SINGLE_THREAD_MODE == 0
     for (unsigned i = 0; i < n_threads; ++i)
         threads[i].join();
+#endif
 
     return vOut;
 }
