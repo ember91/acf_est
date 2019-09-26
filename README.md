@@ -44,7 +44,7 @@ for more details about command parameters and specifics.
 
 ## Built With
 
-* [vectorclass](https://github.com/vectorclass) - Vectorization library
+* [vectorclass](https://github.com/vectorclass/version2) - Vectorization library
 
 ## Authors
 
@@ -52,4 +52,4 @@ for more details about command parameters and specifics.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details
+This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.txt) file for details
