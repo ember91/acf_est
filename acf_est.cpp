@@ -32,11 +32,10 @@
 #endif
 
 // TODO list:
-// * Split into more functions
 // * Sort functions
 // * Is it possible to add an exit signal from matlab?
-// * Add README
-// * License
+// * Add README. It should explain: Purpose (fastest), why it is fast,
+// licensing, how to install vectorclass, testing framework, how to compile
 // * Instructions about vectorclass
 // * Documentation
 
