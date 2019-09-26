@@ -37,7 +37,7 @@ function tester(gauss)
   t = zeros(2, 1);
   
   tic;
-  r1 = acf2(gauss);
+  r1 = bartlett_simple(gauss);
   t(1) = toc;
   
   tic;
@@ -66,7 +66,7 @@ function tester(gauss)
   end
 end
 
-function r = acf2(x)
+function r = bartlett_simple(x)
   N = size(x, 1);
   C = size(x, 2);
   if N ~= 1

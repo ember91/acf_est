@@ -1,8 +1,9 @@
 /** 
  * Compile with the following in matlab:
- * mex CXXFLAGS='$CXXFLAGS -std=c++1z -O3 -march=native -Wall -Wextra -Wpedantic -Wshadow' acf_est.cpp
+ * mex CXXFLAGS='$CXXFLAGS -std=c++1z -O3 -march=native -Wall -Wextra -Wpedantic' acf_est.cpp
  */
 
+#include <sstream>
 #include <thread>
 #include <vector>
 
@@ -30,6 +31,8 @@
 #endif
 
 // TODO list:
+// * Split into more functions
+// * Sort functions
 // * Handle exceptions gracefully when creating threads etc
 // * Is it possible to add an exit signal from matlab?
 // * Add README
@@ -49,39 +52,98 @@ struct ThreadParams
     void *y;            /**< Output matrix [(2*N-1), C] */
 };
 
+/**
+ *
+ * Generic (empty) core routine function
+ * 
+ * \tparam T Input/Output type
+ * \param x Input array
+ * \param k Offset
+ * \param s Sum [out]
+ *  
+ */
 template <typename T>
 inline void core(T *x, mwSize k, T *s) {}
 
+/**
+ *
+ * Core calculation routine for float
+ * 
+ * \param x Input array
+ * \param k Offset
+ * \param s Sum [out]
+ *  
+ */
 template <>
 inline void core(float *x, mwSize k, float *s)
 {
+    // Read two float vectors offset by k from memory
     VEC_SINGLE_TYPE v1 = VEC_SINGLE_TYPE().load(x);
     VEC_SINGLE_TYPE v2 = VEC_SINGLE_TYPE().load(x + k);
+
+    // Multiply
     VEC_SINGLE_TYPE prod = v1 * v2;
-    *s = *s + horizontal_add(prod);
+
+    // Sum
+    *s += horizontal_add(prod);
 }
 
+/**
+ *
+ * Core calculation routine for double
+ * 
+ * \param x Input array
+ * \param k Offset
+ * \param s Sum [out]
+ *  
+ */
 template <>
 inline void core(double *x, mwSize k, double *s)
 {
+    // Read two double vectors offset by k from memory
     VEC_DOUBLE_TYPE v1 = VEC_DOUBLE_TYPE().load(x);
     VEC_DOUBLE_TYPE v2 = VEC_DOUBLE_TYPE().load(x + k);
+
+    // Multiply
     VEC_DOUBLE_TYPE prod = v1 * v2;
-    *s = *s + horizontal_add(prod);
+
+    // Sum
+    *s += horizontal_add(prod);
 }
 
+/**
+ *
+ * Generic template for vector size
+ * 
+ * \return Vector size
+ *  
+ */
 template <typename T>
 inline int vecSize()
 {
     return 1;
 }
 
+/**
+ *
+ * Get vector size
+ * 
+ * \return Vector size for float
+ *  
+ */
 template <>
 inline int vecSize<float>()
 {
     return VEC_SINGLE_TYPE::size();
 }
 
+/**
+ *
+ * Get vector size
+ * 
+ * \return Vector size for double
+ *  
+ */
 template <>
 inline int vecSize<double>()
 {
@@ -89,7 +151,7 @@ inline int vecSize<double>()
 }
 
 /**
- * Caluclate Batlett's estimate
+ * Caluclate Bartlett's estimate
  * 
  * \param p Thread parameters
  * \return Nothing
@@ -99,13 +161,19 @@ template <typename T>
 void *
 calculate(const ThreadParams &p)
 {
+    // Convert data pointers
     T *x = (T *)p.x;
     T *y = (T *)p.y;
 
     // Iterate through each column
     for (mwSize c = 0; c < p.C; ++c)
     {
-        // Iterate through each input index
+        // Iterate through each input index.
+        // First, make the first thread calculate r[0], the second r[1] ...
+        // Then increase by the number of threads so the first thread now
+        // calculates r[0 + n_threads]. For the next column, make the first
+        // thread start at r[1] instead of at r[0] as earlier, to make it more
+        // fair, since higher indices of r in general are easier.
         for (mwSize k = (c + p.index) % p.n_threads; k < p.N; k += p.n_threads)
         {
             T s = 0.0; /**< Current sum */
@@ -115,16 +183,17 @@ calculate(const ThreadParams &p)
                 s += x[n] * x[n + k];
 #else
             int lim = (int)p.N - (int)k - vecSize<T>() + 1; /**< Iteration limit */
-            int n;
+            int n;                                          /**< Iteration index */
+            // Vectorized loop
             for (n = 0; n < lim; n += vecSize<T>())
                 core<T>(x + c * p.N + n, k, &s);
 
-            // Don't forget the last elements that didn't fit into a vector
-            for (; n < p.N - k; ++n)
+            // Non-vectorized loop for the remaining vector size - 1 elements
+            for (; n < (int)(p.N - k); ++n)
                 s += x[c * p.N + n] * x[c * p.N + n + k];
 #endif
 
-            // Divide by N and write twice, due to ACF symmetry
+            // Sum is ready. Write only half of spectra due to symmetry and for efficency
             y[c * p.N + k] = s / p.N;
         }
     }
@@ -136,9 +205,12 @@ calculate(const ThreadParams &p)
  * Detect number of CPU cores
  * 
  * \return Number of CPU cores
+ * 
  */
 unsigned detectNumberOfCores()
 {
+    // TODO: This is a poor man's core detector :(
+
     /** Number of threads to spawn. Assume SMT for now. */
     unsigned n = std::thread::hardware_concurrency();
 
@@ -146,7 +218,7 @@ unsigned detectNumberOfCores()
     if (n == 0)
         n = 1;
 
-    // Assume SMT if even number of threads
+    // Assume SMT (hyperthreading) if the number of threads are even
     if (n % 2 == 0)
         n /= 2;
 
@@ -179,6 +251,7 @@ mxArray *spawnThreads(const mxArray *vIn)
     if (N == 1 && C != 1)
         std::swap(C, N);
 
+    // Detect parallelism
     unsigned n_threads = detectNumberOfCores();
 
     // Allocate threads and their parameters
@@ -197,25 +270,45 @@ mxArray *spawnThreads(const mxArray *vIn)
     }
 
     // Start all threads
-    for (unsigned i = 0; i < n_threads; ++i)
+    try
     {
+        for (unsigned i = 0; i < n_threads; ++i)
+        {
 #if SINGLE_THREAD_MODE == 0
-        if (mxIsSingle(vIn))
-            threads[i] = std::move(std::thread(calculate<float>, params[i]));
-        else
-            threads[i] = std::move(std::thread(calculate<double>, params[i]));
+            if (mxIsSingle(vIn))
+                threads[i] = std::move(std::thread(calculate<float>, params[i]));
+            else
+                threads[i] = std::move(std::thread(calculate<double>, params[i]));
 #else
-        if (mxIsSingle(vIn))
-            calculate<float>(params[i]);
-        else
-            calculate<double>(params[i]);
+            if (mxIsSingle(vIn))
+                calculate<float>(params[i]);
+            else
+                calculate<double>(params[i]);
 #endif
+        }
+    }
+    catch (const std::exception &ex)
+    {
+        std::stringstream ss;
+        ss << "Failed to create thread: " << ex.what();
+        mexErrMsgIdAndTxt("acf_est:spawnThreads",
+                          ss.str().c_str());
     }
 
 // Wait for all threads to finish
 #if SINGLE_THREAD_MODE == 0
-    for (unsigned i = 0; i < n_threads; ++i)
-        threads[i].join();
+    try
+    {
+        for (unsigned i = 0; i < n_threads; ++i)
+            threads[i].join();
+    }
+    catch (const std::exception &ex)
+    {
+        std::stringstream ss;
+        ss << "Failed to join thread: " << ex.what();
+        mexErrMsgIdAndTxt("acf_est:spawnThreads",
+                          ss.str().c_str());
+    }
 #endif
 
     return vOut;
@@ -232,20 +325,16 @@ mxArray *spawnThreads(const mxArray *vIn)
  */
 void checkArguments(int nlhs, mxArray **plhs, int nrhs, const mxArray **prhs)
 {
-    (void)(plhs);
+    (void)(plhs); // Unused
 
     if (nrhs != 1)
         mexErrMsgIdAndTxt("acf_est:checkArguments", "One input required");
-
     if (!mxIsSingle(prhs[0]) && !mxIsDouble(prhs[0]))
         mexErrMsgIdAndTxt("acf_est:checkArguments", "Input matrix must be of type single or double");
-
     if (mxIsComplex(prhs[0]))
         mexErrMsgIdAndTxt("acf_est:checkArguments", "Input matrix cannot be complex");
-
     if (mxGetNumberOfDimensions(prhs[0]) >= 4)
         mexErrMsgIdAndTxt("acf_est:checkArguments", "Cannot handle 4-dimensional matrices or greater");
-
     if (nlhs > 1)
         mexErrMsgIdAndTxt("acf_est:checkArguments", "One or zero outputs required");
 }
