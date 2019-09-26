@@ -13,13 +13,25 @@
 // Agner Fog's vectorclass library headers
 #include "vectorclass/vectorclass.h"
 
+#if INSTRSET >= 10 // AVX512VL
+#define VEC_SINGLE_TYPE Vec16f
+#define VEC_DOUBLE_TYPE Vec8d
+#elif INSTRSET >= 8 // AVX2
+#define VEC_SINGLE_TYPE Vec8f
+#define VEC_DOUBLE_TYPE Vec4d
+#elif INSTRSET == 2
+#define VEC_SINGLE_TYPE Vec4f
+#define VEC_DOUBLE_TYPE Vec2d
+#else
+#endif
+
 // TODO list:
 // * Add support for floats, ints ...?
-// * Remove vectorclass in favour of VcDevel/Vc?
 // * Detect maximum vectorization level (AVX, AVX2...). See above.
 // * Handle exceptions gracefully when creating threads etc
 // * Add README
 // * Change formatter defaults
+// * License
 
 /** Parameters to spawned threads */
 struct ThreadParams
@@ -28,9 +40,48 @@ struct ThreadParams
     unsigned index;     /**< Thread index (0 <= index < n_threads) */
     mwSize N;           /**< Number of rows in matrix (Size of each ACF estimation) */
     mwSize C;           /**< Number of columns in matrix (Number of ACFs to estimate) */
-    mxDouble *x;        /**< Input matrix [N, C] */
-    mxDouble *y;        /**< Output matrix [(2*N-1), C] */
+    void *x;            /**< Input matrix [N, C] */
+    void *y;            /**< Output matrix [(2*N-1), C] */
 };
+
+template <typename T>
+inline void core(T *x, mwSize k, T *s) {}
+
+template <>
+inline void core(float *x, mwSize k, float *s)
+{
+    VEC_SINGLE_TYPE v1 = VEC_SINGLE_TYPE().load(x);
+    VEC_SINGLE_TYPE v2 = VEC_SINGLE_TYPE().load(x + k);
+    VEC_SINGLE_TYPE prod = v1 * v2;
+    *s = *s + horizontal_add(prod);
+}
+
+template <>
+inline void core(double *x, mwSize k, double *s)
+{
+    VEC_DOUBLE_TYPE v1 = VEC_DOUBLE_TYPE().load(x);
+    VEC_DOUBLE_TYPE v2 = VEC_DOUBLE_TYPE().load(x + k);
+    VEC_DOUBLE_TYPE prod = v1 * v2;
+    *s = *s + horizontal_add(prod);
+}
+
+template <typename T>
+inline int vecSize()
+{
+    return 1;
+}
+
+template <>
+inline int vecSize<float>()
+{
+    return VEC_SINGLE_TYPE::size();
+}
+
+template <>
+inline int vecSize<double>()
+{
+    return VEC_DOUBLE_TYPE::size();
+}
 
 /**
  * Caluclate Batlett's estimate
@@ -39,38 +90,37 @@ struct ThreadParams
  * \return Nothing
  * 
  */
-void *calculate(const ThreadParams &p)
+template <typename T>
+void *
+calculate(const ThreadParams &p)
 {
+    T *x = (T *)p.x;
+    T *y = (T *)p.y;
+
     // Iterate through each column
     for (mwSize c = 0; c < p.C; ++c)
     {
         // Iterate through each input index
         for (mwSize k = (c + p.index) % p.n_threads; k < p.N; k += p.n_threads)
         {
-            double s = 0.0;                  /**< Current sum */
-#if 1                                        // Enable for correct but slow implementation
-            int lim = (int)p.N - (int)k - 3; /**< Iteration limit */
+            double s = 0.0; /**< Current sum */
+#ifndef VEC_SINGLE_TYPE
+            // Simplest realization
+            for (size_t n = 0; n < N - k; ++n)
+                s += x[n] * x[n + k];
+#else
+            int lim = (int)p.N - (int)k - vecSize<double>() + 1; /**< Iteration limit */
             int n;
-            for (n = 0; n < lim; n += 4)
-            {
-                // Vectorized multiplication and summation
-                Vec4d v1 = Vec4d().load(p.x + c * p.N + n);
-                Vec4d v2 = Vec4d().load(p.x + c * p.N + n + k);
-                Vec4d prod = v1 * v2;
-                s += horizontal_add(prod);
-            }
+            for (n = 0; n < lim; n += vecSize<double>())
+                core<double>(x + c * p.N + n, k, &s);
 
             // Don't forget the last elements that didn't fit into a vector
             for (; n < p.N - k; ++n)
-                s += p.x[c * p.N + n] * p.x[c * p.N + n + k];
-#else
-            for (size_t n = 0; n < N - k; ++n)
-                s += x[n] * x[n + k];
+                s += x[c * p.N + n] * x[c * p.N + n + k];
 #endif
 
             // Divide by N and write twice, due to ACF symmetry
-            double d = s / p.N;
-            p.y[c * p.N + k] = d;
+            y[c * p.N + k] = s / p.N;
         }
     }
 
@@ -131,13 +181,13 @@ mxArray *spawnThreads(const mxArray *vIn)
         params[i].index = i;
         params[i].N = N;
         params[i].C = C;
-        params[i].x = (mxDouble *)mxGetData(vIn);
-        params[i].y = (mxDouble *)mxGetData(vOut);
+        params[i].x = mxGetData(vIn);
+        params[i].y = mxGetData(vOut);
     }
 
     // Start all threads
     for (unsigned i = 0; i < n_threads; ++i)
-        threads[i] = std::move(std::thread(calculate, params[i]));
+        threads[i] = std::move(std::thread(calculate<double>, params[i]));
 
     // Wait for all threads to finish
     for (unsigned i = 0; i < n_threads; ++i)
@@ -162,8 +212,8 @@ void checkArguments(int nlhs, mxArray **plhs, int nrhs, const mxArray **prhs)
     if (nrhs != 1)
         mexErrMsgIdAndTxt("acf_est:checkArguments", "One input required");
 
-    if (!mxIsDouble(prhs[0]))
-        mexErrMsgIdAndTxt("acf_est:checkArguments", "Input matrix must be of type double");
+    if (!mxIsSingle(prhs[0]) && !mxIsDouble(prhs[0]))
+        mexErrMsgIdAndTxt("acf_est:checkArguments", "Input matrix must be of type single or double");
 
     if (mxIsComplex(prhs[0]))
         mexErrMsgIdAndTxt("acf_est:checkArguments", "Input matrix cannot be complex");
