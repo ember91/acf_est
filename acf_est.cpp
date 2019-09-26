@@ -34,9 +34,10 @@
 // TODO list:
 // * Sort functions
 // * Is it possible to add an exit signal from matlab?
-// * Add Bartlett formula to README
+// * Change name to bartlett_est
 // * Cleanup test.m
 // * Documentation
+// * Run doxygen
 // * Better matlab command documentation
 
 /** Parameters to spawned threads */

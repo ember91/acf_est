@@ -22,7 +22,7 @@ git clone https://github.com/vectorclass/version2.git
 ```
 In matlab, compile this into mex with
 ```
-mex CXXFLAGS='$CXXFLAGS -std=c++1z -O3 -march=native -Wall -Wextra
+mex CXXFLAGS='$CXXFLAGS -std=c++1z -O3 -march=native -Wall -Wextra -Wpedantic' acf_est.cpp
 ```
 This ensures it compiles with high optimizations and vector instructions if available.
 
