@@ -34,10 +34,10 @@
 // TODO list:
 // * Sort functions
 // * Is it possible to add an exit signal from matlab?
-// * Add README. It should explain: Purpose (fastest), why it is fast,
-// licensing, how to install vectorclass, testing framework, how to compile
-// * Instructions about vectorclass
+// * Add Bartlett formula to README
+// * Cleanup test.m
 // * Documentation
+// * Better matlab command documentation
 
 /** Parameters to spawned threads */
 struct ThreadParams {
