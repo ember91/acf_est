@@ -6,7 +6,7 @@ Quite fast Matlab mex Bartlett autocorrelation function estimator written in C++
 
 I wanted to write the fastest Bartlett ACF estimator in existence. Just for fun. On my old laptop and compared to the fastest Matlab Bartlett estimator I could write, it's about 30 times faster for 64-bit doubles, and about 50 times faster for 32-bit singles (floats).
 
-# Definition
+## Definition
 
 ![Bartlett estimation formula](definition.png)
 
@@ -18,6 +18,7 @@ It uses vectorization and parallelization (threading) to achieve these reults.
 
 Install Agner Fog's [vectorclass](https://github.com/vectorclass) library. It's a header-only library, so just extract/clone it into the project base directory.
 ```
+cd acf_est
 git clone https://github.com/vectorclass/version2.git
 ```
 In matlab, compile this into mex with
@@ -57,4 +58,4 @@ for more details about command parameters and specifics.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.txt) file for details
+This project is licensed under the MIT License - see the [LICENSE.txt](LICENSE.txt) file for details.
