@@ -31,15 +31,6 @@
 #else
 #endif
 
-// TODO list:
-// * Sort functions
-// * Is it possible to add an exit signal from matlab?
-// * Change name to bartlett_est
-// * Cleanup test.m
-// * Documentation
-// * Run doxygen
-// * Better matlab command documentation
-
 /** Parameters to spawned threads */
 struct ThreadParams {
   unsigned n_threads; /**< Total number of worker threads */
@@ -50,168 +41,76 @@ struct ThreadParams {
   void* y;  /**< Output matrix [(2*N-1), C] */
 };
 
-/**
- *
- * Generic (empty) core routine function
- *
- * \tparam T Input/Output type
- * \param x Input array
- * \param k Offset
- * \param s Sum [out]
- *
- */
+void mexFunction(int nlhs, mxArray** plhs, int nrhs, const mxArray** prhs);
+void checkArguments(int nlhs, mxArray** plhs, int nrhs, const mxArray** prhs);
+mxArray* spawnThreads(const mxArray* vIn);
 template <typename T>
-inline void core(T* x, mwSize k, T* s) {}
-
-/**
- *
- * Core calculation routine for float
- *
- * \param x Input array
- * \param k Offset
- * \param s Sum [out]
- *
- */
-template <>
-inline void core(float* x, mwSize k, float* s) {
-  // Read two float vectors offset by k from memory
-  VEC_SINGLE_TYPE v1 = VEC_SINGLE_TYPE().load(x);
-  VEC_SINGLE_TYPE v2 = VEC_SINGLE_TYPE().load(x + k);
-
-  // Multiply
-  VEC_SINGLE_TYPE prod = v1 * v2;
-
-  // Sum
-  *s += horizontal_add(prod);
-}
-
-/**
- *
- * Core calculation routine for double
- *
- * \param x Input array
- * \param k Offset
- * \param s Sum [out]
- *
- */
-template <>
-inline void core(double* x, mwSize k, double* s) {
-  // Read two double vectors offset by k from memory
-  VEC_DOUBLE_TYPE v1 = VEC_DOUBLE_TYPE().load(x);
-  VEC_DOUBLE_TYPE v2 = VEC_DOUBLE_TYPE().load(x + k);
-
-  // Multiply
-  VEC_DOUBLE_TYPE prod = v1 * v2;
-
-  // Sum
-  *s += horizontal_add(prod);
-}
-
-/**
- *
- * Generic template for vector size
- *
- * \return Vector size
- *
- */
+void* calculate(const ThreadParams& p);
+unsigned detectNumberOfCores();
 template <typename T>
-inline int vecSize() {
-  return 1;
-}
-
-/**
- *
- * Get vector size
- *
- * \return Vector size for float
- *
- */
+inline void core(const T* x, mwSize k, T* s);
 template <>
-inline int vecSize<float>() {
-  return VEC_SINGLE_TYPE::size();
-}
-
-/**
- *
- * Get vector size
- *
- * \return Vector size for double
- *
- */
+inline void core(const float* x, mwSize k, float* s);
 template <>
-inline int vecSize<double>() {
-  return VEC_DOUBLE_TYPE::size();
-}
-
-/**
- * Caluclate Bartlett's estimate
- *
- * \param p Thread parameters
- * \return Nothing
- *
- */
+inline void core(const double* x, mwSize k, double* s);
 template <typename T>
-void* calculate(const ThreadParams& p) {
-  // Convert data pointers
-  T* x = (T*)p.x;
-  T* y = (T*)p.y;
+inline int vecSize();
+template <>
+inline int vecSize<float>();
+template <>
+inline int vecSize<double>();
 
-  // Iterate through each column
-  for (mwSize c = 0; c < p.C; ++c) {
-    // Iterate through each input index.
-    // First, make the first thread calculate r[0], the second r[1] ...
-    // Then increase by the number of threads so the first thread now
-    // calculates r[0 + n_threads]. For the next column, make the first
-    // thread start at r[1] instead of at r[0] as earlier, to make it more
-    // fair, since higher indices of r in general are easier.
-    for (mwSize k = (c + p.index) % p.n_threads; k < p.N; k += p.n_threads) {
-      T s = 0.0; /**< Current sum */
-#ifndef VEC_SINGLE_TYPE
-      // Simplest realization
-      for (size_t n = 0; n < N - k; ++n)
-        s += x[n] * x[n + k];
-#else
-      int lim = (int)p.N - (int)k - vecSize<T>() + 1; /**< Iteration limit */
-      int n;                                          /**< Iteration index */
-      // Vectorized loop
-      for (n = 0; n < lim; n += vecSize<T>())
-        core<T>(x + c * p.N + n, k, &s);
+// TODO list:
+// * Is it possible to add an exit signal from matlab?
+// * Change name to bartlett_est
+// * Cleanup test.m
+// * Documentation
+// * Run doxygen
+// * Better matlab command documentation
+// * Add doxygen, VS code, matlab mex etc to README
 
-      // Non-vectorized loop for the remaining vector size - 1 elements
-      for (; n < (int)(p.N - k); ++n)
-        s += x[c * p.N + n] * x[c * p.N + n + k];
-#endif
-
-      // Sum is ready. Write only half of spectra due to symmetry and for
-      // efficency
-      y[c * p.N + k] = s / p.N;
-    }
-  }
-
-  return nullptr;
+/**
+ * Matlab mex entry function. Calculate Bartlett estimate of auto correlation
+ * function efficiently.
+ *
+ * \param nlhs Number of left hand parameters
+ * \param plhs Left hand parameters [nlhs]
+ * \param nrhs Number of right hand parameters
+ * \param prhs Right hand parameters [nrhs]
+ *
+ */
+void mexFunction(int nlhs, mxArray** plhs, int nrhs, const mxArray** prhs) {
+  checkArguments(nlhs, plhs, nrhs, prhs);
+  mxArray* y = spawnThreads(prhs[0]);
+  if (nrhs >= 1)
+    plhs[0] = y;
 }
 
 /**
- * Detect number of CPU cores
+ * Check that arguments in are valid
  *
- * \return Number of CPU cores
+ * \param nlhs Number of left hand parameters
+ * \param plhs Left hand parameters [nlhs]
+ * \param nrhs Number of right hand parameters
+ * \param prhs Right hand parameters [nrhs]
  *
  */
-unsigned detectNumberOfCores() {
-  // TODO: This is a poor man's core detector :(
+void checkArguments(int nlhs, mxArray** plhs, int nrhs, const mxArray** prhs) {
+  (void)(plhs);  // Unused
 
-  /** Number of threads to spawn. Assume SMT for now. */
-  unsigned n = std::thread::hardware_concurrency();
-
-  // Sanity check
-  if (n == 0)
-    n = 1;
-
-  // Assume SMT (hyperthreading) if the number of threads are even
-  if (n % 2 == 0)
-    n /= 2;
-
-  return n;
+  if (nrhs != 1)
+    mexErrMsgIdAndTxt("acf_est:checkArguments", "One input required");
+  if (!mxIsSingle(prhs[0]) && !mxIsDouble(prhs[0]))
+    mexErrMsgIdAndTxt("acf_est:checkArguments",
+                      "Input matrix must be of type single or double");
+  if (mxIsComplex(prhs[0]))
+    mexErrMsgIdAndTxt("acf_est:checkArguments",
+                      "Input matrix cannot be complex");
+  if (mxGetNumberOfDimensions(prhs[0]) >= 4)
+    mexErrMsgIdAndTxt("acf_est:checkArguments",
+                      "Cannot handle 4-dimensional matrices or greater");
+  if (nlhs > 1)
+    mexErrMsgIdAndTxt("acf_est:checkArguments", "One or zero outputs required");
 }
 
 /**
@@ -293,45 +192,165 @@ mxArray* spawnThreads(const mxArray* vIn) {
 }
 
 /**
- * Check that arguments in are valid
+ * Caluclate Bartlett's estimate
  *
- * \param nlhs Number of left hand parameters
- * \param plhs Left hand parameters [nlhs]
- * \param nrhs Number of right hand parameters
- * \param prhs Right hand parameters [nrhs]
+ * \param p Thread parameters
+ * \return Nothing
  *
  */
-void checkArguments(int nlhs, mxArray** plhs, int nrhs, const mxArray** prhs) {
-  (void)(plhs);  // Unused
+template <typename T>
+void* calculate(const ThreadParams& p) {
+  // Convert data pointers
+  T* x = (T*)p.x;
+  T* y = (T*)p.y;
 
-  if (nrhs != 1)
-    mexErrMsgIdAndTxt("acf_est:checkArguments", "One input required");
-  if (!mxIsSingle(prhs[0]) && !mxIsDouble(prhs[0]))
-    mexErrMsgIdAndTxt("acf_est:checkArguments",
-                      "Input matrix must be of type single or double");
-  if (mxIsComplex(prhs[0]))
-    mexErrMsgIdAndTxt("acf_est:checkArguments",
-                      "Input matrix cannot be complex");
-  if (mxGetNumberOfDimensions(prhs[0]) >= 4)
-    mexErrMsgIdAndTxt("acf_est:checkArguments",
-                      "Cannot handle 4-dimensional matrices or greater");
-  if (nlhs > 1)
-    mexErrMsgIdAndTxt("acf_est:checkArguments", "One or zero outputs required");
+  // Iterate through each column
+  for (mwSize c = 0; c < p.C; ++c) {
+    // Iterate through each input index.
+    // First, make the first thread calculate r[0], the second r[1] ...
+    // Then increase by the number of threads so the first thread now
+    // calculates r[0 + n_threads]. For the next column, make the first
+    // thread start at r[1] instead of at r[0] as earlier, to make it more
+    // fair, since higher indices of r in general are easier.
+    for (mwSize k = (c + p.index) % p.n_threads; k < p.N; k += p.n_threads) {
+      T s = 0.0; /**< Current sum */
+#ifndef VEC_SINGLE_TYPE
+      // Simplest realization
+      for (size_t n = 0; n < N - k; ++n)
+        s += x[n] * x[n + k];
+#else
+      int lim = (int)p.N - (int)k - vecSize<T>() + 1; /**< Iteration limit */
+      int n;                                          /**< Iteration index */
+      // Vectorized loop
+      for (n = 0; n < lim; n += vecSize<T>())
+        core<T>(x + c * p.N + n, k, &s);
+
+      // Non-vectorized loop for the remaining vector size - 1 elements
+      for (; n < (int)(p.N - k); ++n)
+        s += x[c * p.N + n] * x[c * p.N + n + k];
+#endif
+
+      // Sum is ready. Write only half of spectra due to symmetry and for
+      // efficency
+      y[c * p.N + k] = s / p.N;
+    }
+  }
+
+  return nullptr;
 }
 
 /**
- * Matlab mex entry function. Calculate Bartlett estimate of auto correlation
- * function efficiently.
+ * Detect number of CPU cores
  *
- * \param nlhs Number of left hand parameters
- * \param plhs Left hand parameters [nlhs]
- * \param nrhs Number of right hand parameters
- * \param prhs Right hand parameters [nrhs]
+ * \return Number of CPU cores
  *
  */
-void mexFunction(int nlhs, mxArray** plhs, int nrhs, const mxArray** prhs) {
-  checkArguments(nlhs, plhs, nrhs, prhs);
-  mxArray* y = spawnThreads(prhs[0]);
-  if (nrhs >= 1)
-    plhs[0] = y;
+unsigned detectNumberOfCores() {
+  // TODO: This is a poor man's core detector :(
+
+  /** Number of threads to spawn. Assume SMT for now. */
+  unsigned n = std::thread::hardware_concurrency();
+
+  // Sanity check
+  if (n == 0)
+    n = 1;
+
+  // Assume SMT (hyperthreading) if the number of threads are even
+  if (n % 2 == 0)
+    n /= 2;
+
+  return n;
+}
+
+/**
+ *
+ * Generic (empty) core routine function
+ *
+ * \tparam T Input/Output type
+ * \param x Input array
+ * \param k Offset
+ * \param s Sum [out]
+ *
+ */
+template <typename T>
+inline void core(const T* x, mwSize k, T* s) {}
+
+/**
+ *
+ * Core calculation routine for float
+ *
+ * \param x Input array
+ * \param k Offset
+ * \param s Sum [out]
+ *
+ */
+template <>
+inline void core(const float* x, mwSize k, float* s) {
+  // Read two float vectors offset by k from memory
+  VEC_SINGLE_TYPE v1 = VEC_SINGLE_TYPE().load(x);
+  VEC_SINGLE_TYPE v2 = VEC_SINGLE_TYPE().load(x + k);
+
+  // Multiply
+  VEC_SINGLE_TYPE prod = v1 * v2;
+
+  // Sum
+  *s += horizontal_add(prod);
+}
+
+/**
+ *
+ * Core calculation routine for double
+ *
+ * \param x Input array
+ * \param k Offset
+ * \param s Sum [out]
+ *
+ */
+template <>
+inline void core(const double* x, mwSize k, double* s) {
+  // Read two double vectors offset by k from memory
+  VEC_DOUBLE_TYPE v1 = VEC_DOUBLE_TYPE().load(x);
+  VEC_DOUBLE_TYPE v2 = VEC_DOUBLE_TYPE().load(x + k);
+
+  // Multiply
+  VEC_DOUBLE_TYPE prod = v1 * v2;
+
+  // Sum
+  *s += horizontal_add(prod);
+}
+
+/**
+ *
+ * Generic template for vector size
+ *
+ * \return Vector size
+ *
+ */
+template <typename T>
+inline int vecSize() {
+  return 1;
+}
+
+/**
+ *
+ * Get vector size
+ *
+ * \return Vector size for float
+ *
+ */
+template <>
+inline int vecSize<float>() {
+  return VEC_SINGLE_TYPE::size();
+}
+
+/**
+ *
+ * Get vector size
+ *
+ * \return Vector size for double
+ *
+ */
+template <>
+inline int vecSize<double>() {
+  return VEC_DOUBLE_TYPE::size();
 }
