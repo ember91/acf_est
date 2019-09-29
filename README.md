@@ -49,6 +49,7 @@ for more details about command parameters and specifics.
 ## Built With
 
 * [vectorclass](https://github.com/vectorclass/version2) - Vectorization library
+* [Visual Studio Code](https://code.visualstudio.com/) - Code editor
 
 ## Authors
 

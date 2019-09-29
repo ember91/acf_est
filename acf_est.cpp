@@ -63,11 +63,7 @@ inline int vecSize<double>();
 // TODO list:
 // * Is it possible to add an exit signal from matlab?
 // * Change name to bartlett_est
-// * Cleanup test.m
-// * Documentation
-// * Run doxygen
 // * Better matlab command documentation
-// * Add doxygen, VS code, matlab mex etc to README
 
 /**
  * Matlab mex entry function. Calculate Bartlett estimate of auto correlation
