@@ -18,17 +18,22 @@
 /** Set to 1 to spawn 0 threads. May be useful when debugging. */
 #define SINGLE_THREAD_MODE 0
 
+#define VECTORIZATION 1
+
 // Detect instruction set and set vector accordingly
 #if INSTRSET >= 10  // AVX512VL
-#define VEC_SINGLE_TYPE Vec16f
-#define VEC_DOUBLE_TYPE Vec8d
+typedef Vec16f vec_single_t;
+typedef Vec8d vec_double_t;
 #elif INSTRSET >= 8  // AVX2
-#define VEC_SINGLE_TYPE Vec8f
-#define VEC_DOUBLE_TYPE Vec4d
+typedef Vec8f vec_single_t;
+typedef Vec4d vec_double_t;
 #elif INSTRSET == 2
-#define VEC_SINGLE_TYPE Vec4f
-#define VEC_DOUBLE_TYPE Vec2d
+typedef Vec4f vec_single_t;
+typedef Vec2d vec_double_t;
 #else
+#define VECTORIZATION 0
+typedef float vec_single_t;
+typedef double vec_double_t;
 #endif
 
 /** Parameters to spawned threads */
@@ -44,26 +49,15 @@ struct ThreadParams {
 void mexFunction(int nlhs, mxArray** plhs, int nrhs, const mxArray** prhs);
 void checkArguments(int nlhs, mxArray** plhs, int nrhs, const mxArray** prhs);
 mxArray* spawnThreads(const mxArray* vIn);
-template <typename T>
+template <typename Tvec, typename Tscal>
 void* calculate(const ThreadParams& p);
 unsigned detectNumberOfCores();
-template <typename T>
-inline void core(const T* x, mwSize k, T* s);
-template <>
-inline void core(const float* x, mwSize k, float* s);
-template <>
-inline void core(const double* x, mwSize k, double* s);
-template <typename T>
-inline int vecSize();
-template <>
-inline int vecSize<float>();
-template <>
-inline int vecSize<double>();
 
 // TODO list:
 // * Is it possible to add an exit signal from matlab?
 // * Change name to bartlett_est
 // * Better matlab command documentation
+// * Better detection of instruction sets such as FMA...
 
 /**
  * Matlab mex entry function. Calculate Bartlett estimate of auto correlation
@@ -155,15 +149,18 @@ mxArray* spawnThreads(const mxArray* vIn) {
   try {
     for (unsigned i = 0; i < n_threads; ++i) {
 #if SINGLE_THREAD_MODE == 0
-      if (mxIsSingle(vIn))
-        threads[i] = std::move(std::thread(calculate<float>, params[i]));
-      else
-        threads[i] = std::move(std::thread(calculate<double>, params[i]));
+      if (mxIsSingle(vIn)) {
+        threads[i] =
+            std::move(std::thread(calculate<vec_single_t, float>, params[i]));
+      } else {
+        threads[i] =
+            std::move(std::thread(calculate<vec_double_t, double>, params[i]));
+      }
 #else
       if (mxIsSingle(vIn))
-        calculate<float>(params[i]);
+        calculate<vec_single_t, float>(params[i]);
       else
-        calculate<double>(params[i]);
+        calculate<vec_double_t, double>(params[i]);
 #endif
     }
   } catch (const std::exception& ex) {
@@ -190,15 +187,17 @@ mxArray* spawnThreads(const mxArray* vIn) {
 /**
  * Caluclate Bartlett's estimate
  *
- * \param p Thread parameters
+ * \tparam Tvec  Vector type to use when calculating
+ * \tparam Tscal Scalar type to use when calculating
+ * \param p      Thread parameters
  * \return Nothing
  *
  */
-template <typename T>
+template <typename Tvec, typename Tscal>
 void* calculate(const ThreadParams& p) {
   // Convert data pointers
-  T* x = (T*)p.x;
-  T* y = (T*)p.y;
+  Tscal* x = (Tscal*)p.x;
+  Tscal* y = (Tscal*)p.y;
 
   // Iterate through each column
   for (mwSize c = 0; c < p.C; ++c) {
@@ -209,17 +208,30 @@ void* calculate(const ThreadParams& p) {
     // thread start at r[1] instead of at r[0] as earlier, to make it more
     // fair, since higher indices of r in general are easier.
     for (mwSize k = (c + p.index) % p.n_threads; k < p.N; k += p.n_threads) {
-      T s = 0.0; /**< Current sum */
-#ifndef VEC_SINGLE_TYPE
+      Tscal s; /**< Current sum */
+#if VECTORIZATION == 0
+      s = 0.0;
       // Simplest realization
-      for (size_t n = 0; n < N - k; ++n)
+      for (size_t n = 0; n < p.N - k; ++n)
         s += x[n] * x[n + k];
 #else
-      int lim = (int)p.N - (int)k - vecSize<T>() + 1; /**< Iteration limit */
+      int lim = (int)p.N - (int)k - Tvec::size() + 1; /**< Iteration limit */
       int n;                                          /**< Iteration index */
+
+      // Use a sum vector and do a horizontal add when finished
+      Tvec sv(0);
       // Vectorized loop
-      for (n = 0; n < lim; n += vecSize<T>())
-        core<T>(x + c * p.N + n, k, &s);
+      for (n = 0; n < lim; n += Tvec::size()) {
+        // Read two double vectors offset by k from memory
+        Tvec v1 = Tvec().load(x + c * p.N + n);
+        Tvec v2 = Tvec().load(x + c * p.N + n + k);
+
+        // Multiply and sum
+        sv = mul_add(v1, v2, sv);
+      }
+
+      // We're finished. Time to sum.
+      s = horizontal_add(sv);
 
       // Non-vectorized loop for the remaining vector size - 1 elements
       for (; n < (int)(p.N - k); ++n)
@@ -256,97 +268,4 @@ unsigned detectNumberOfCores() {
     n /= 2;
 
   return n;
-}
-
-/**
- *
- * Generic (empty) core routine function
- *
- * \tparam T Input/Output type
- * \param x Input array
- * \param k Offset
- * \param s Sum [out]
- *
- */
-template <typename T>
-inline void core(const T* x, mwSize k, T* s) {}
-
-/**
- *
- * Core calculation routine for float
- *
- * \param x Input array
- * \param k Offset
- * \param s Sum [out]
- *
- */
-template <>
-inline void core(const float* x, mwSize k, float* s) {
-  // Read two float vectors offset by k from memory
-  VEC_SINGLE_TYPE v1 = VEC_SINGLE_TYPE().load(x);
-  VEC_SINGLE_TYPE v2 = VEC_SINGLE_TYPE().load(x + k);
-
-  // Multiply
-  VEC_SINGLE_TYPE prod = v1 * v2;
-
-  // Sum
-  *s += horizontal_add(prod);
-}
-
-/**
- *
- * Core calculation routine for double
- *
- * \param x Input array
- * \param k Offset
- * \param s Sum [out]
- *
- */
-template <>
-inline void core(const double* x, mwSize k, double* s) {
-  // Read two double vectors offset by k from memory
-  VEC_DOUBLE_TYPE v1 = VEC_DOUBLE_TYPE().load(x);
-  VEC_DOUBLE_TYPE v2 = VEC_DOUBLE_TYPE().load(x + k);
-
-  // Multiply
-  VEC_DOUBLE_TYPE prod = v1 * v2;
-
-  // Sum
-  *s += horizontal_add(prod);
-}
-
-/**
- *
- * Generic template for vector size
- *
- * \return Vector size
- *
- */
-template <typename T>
-inline int vecSize() {
-  return 1;
-}
-
-/**
- *
- * Get vector size
- *
- * \return Vector size for float
- *
- */
-template <>
-inline int vecSize<float>() {
-  return VEC_SINGLE_TYPE::size();
-}
-
-/**
- *
- * Get vector size
- *
- * \return Vector size for double
- *
- */
-template <>
-inline int vecSize<double>() {
-  return VEC_DOUBLE_TYPE::size();
 }
