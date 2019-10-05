@@ -54,10 +54,8 @@ void* calculate(const ThreadParams& p);
 unsigned detectNumberOfCores();
 
 // TODO list:
-// * Is it possible to add an exit signal from matlab?
-// * Change name to bartlett_est
-// * Better matlab command documentation
 // * Better detection of instruction sets such as FMA...
+// * Calculate vectorized average?
 
 /**
  * Matlab mex entry function. Calculate Bartlett estimate of auto correlation

@@ -1,9 +1,14 @@
-% acf_est.m Help file for ACF_EST MEX file
+% ACF_EST   Fast implementation of Bartlett's estimate of the Auto Correlation 
+%   Function.
 %
-% ACF_EST Calculate Bartlett's estimate of the Auto Correlation Function 
-%   C = ACF_EST(A) Calculate one estimate of A for every column using
+%   Bartlett's estimate is defined by
 %   r[k] = 1/N * sum{n=0 -> N - |k| - 1}(x[n + k]x[n]).
-%   Returns the columnwise result in C, with length length(A). The spectra is one sided, so use flipud(:,2:end) for the double sided spectra.
-%   Works along the first nonsingular dimension of A
 %
-%   MEX File function.
+%   C = ACF_EST(X) is the Bartlett estimate of X if X is a vector.
+%
+%   For matrices, each column in C holds the Bartlett estimate of each column 
+%   in X.
+%
+%   The spectra is one sided with r[0] at index 1, so flipud(r(:,2:end)) gives 
+%   the other side of the spectra. For ACF averaging after calculation, use 
+%   avg = mean(r, 2).
