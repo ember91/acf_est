@@ -59,6 +59,7 @@ for more details about command parameters and specifics.
 ## Common errors
 
 Attempt to execute SCRIPT acf_est as a function - Compile it!
+
 fatal error: vectorclass/vectorclass.h: No such file or directory - Download the vectorclass library!
 
 ## Built With
