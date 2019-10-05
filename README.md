@@ -9,6 +9,7 @@ I wanted to write the fastest on-CPU Bartlett ACF estimator in existence. Just f
 ## Benchmarks
 
 In the table below are benchmarks against the fastest ACF implementation I could write in Matlab. The test was performed with a 2^15 x 4 input matrix. Remember that these speedups are for sufficiently large input vectors. 
+
 | Computer               | Instruction set | CPU Cores | Speedup floats | Speedup doubles |
 |------------------------|-----------------|-----------|----------------|-----------------|
 | Old stupid laptop      | AVX2            | 4         | 70             | 35              |
