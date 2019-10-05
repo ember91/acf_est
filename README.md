@@ -4,7 +4,15 @@ Quite fast Matlab mex Bartlett autocorrelation function estimator written in C++
 
 ## Why
 
-I wanted to write the fastest on-CPU Bartlett ACF estimator in existence. Just for fun. On my old laptop and compared to the fastest Matlab Bartlett estimator I could write, it's about 35 times faster for 64-bit doubles, and about 70 times faster for 32-bit singles (floats).
+I wanted to write the fastest on-CPU Bartlett ACF estimator in existence. Just for fun. 
+
+## Benchmarks
+
+In the table below are benchmarks against the fastest ACF implementation I could write in Matlab. The test was performed with a 2^15 x 4 input matrix. Remember that these speedups are for sufficiently large input vectors. 
+| Computer               | Instruction set | CPU Cores | Speedup floats | Speedup doubles |
+|------------------------|-----------------|-----------|----------------|-----------------|
+| Old stupid laptop      | AVX2            | 4         | 70             | 35              |
+| New fancy megacomputer | AVX512          | 20        | 500            | 300             |
 
 ## Definition
 
@@ -46,6 +54,11 @@ to estimate. Write
 help acf_est
 ```
 for more details about command parameters and specifics.
+
+## Common errors
+
+Attempt to execute SCRIPT acf_est as a function - Compile it!
+fatal error: vectorclass/vectorclass.h: No such file or directory - Download the vectorclass library!
 
 ## Built With
 
