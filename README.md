@@ -10,10 +10,10 @@ I wanted to write the fastest on-CPU Bartlett ACF estimator in existence. Just f
 
 In the table below are benchmarks against the fastest ACF implementation I could write in Matlab. The test was performed with a 2^15 x 4 input matrix. Remember that these speedups are for sufficiently large input vectors. 
 
-| Computer               | Instruction set | CPU Cores | Speedup floats | Speedup doubles |
-|------------------------|-----------------|-----------|----------------|-----------------|
-| Old stupid laptop      | AVX2            | 4         | 70             | 35              |
-| New fancy megacomputer | AVX512          | 20        | 500            | 300             |
+| Computer               | Base frequency (GHz) | Instruction set | Cores | Speedup floats | Speedup doubles |
+|------------------------|----------------------|-----------------|-------|----------------|-----------------|
+| Old stupid laptop      | 2.1                  | AVX2            | 4     | 70             | 35              |
+| New fancy megacomputer | 2.2                  | AVX512          | 20    | 500            | 300             |
 
 ## Definition
 
@@ -58,9 +58,10 @@ for more details about command parameters and specifics.
 
 ## Common errors
 
-**Attempt to execute SCRIPT acf_est as a function** - Compile it!
-
-**fatal error: vectorclass/vectorclass.h: No such file or directory** - Download the vectorclass library!
+| When      | Error message | Solution |
+|-----------|---------------|----------|
+| Executing | Attempt to execute SCRIPT acf_est as a function                   | Compile it!                      |
+| Compiling | fatal error: vectorclass/vectorclass.h: No such file or directory | Download the vectorclass library |
 
 ## Built With
 
