@@ -4,7 +4,7 @@ Quite fast Matlab mex Bartlett autocorrelation function estimator written in C++
 
 ## Why
 
-I wanted to write the fastest on-CPU Bartlett ACF estimator in existence. Just for fun. 
+I wanted to write the fastest on-CPU Bartlett Autocorrelation Function *(ACF)* estimator in existence. Just for fun. 
 
 ## Benchmarks
 
