@@ -36,7 +36,7 @@ mex CXXFLAGS='$CXXFLAGS -std=c++1z -O3 -march=native -Wall -Wextra -Wpedantic' a
 ```
 This ensures it compiles with high optimizations and vector instructions if available.
 
-## Running the tests and benchmarks
+## Running tests and benchmarks
 
 In Matlab, go to the project directory. Run *test.m*. It will both check for errors and run benchmarks.
 
