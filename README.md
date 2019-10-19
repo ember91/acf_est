@@ -58,11 +58,12 @@ for more details about command parameters and specifics.
 
 ## Common errors
 
-| When      | Error message | Solution |
+| When      | Error | Solution |
 |-----------|---------------|----------|
-| Executing | Attempt to execute SCRIPT acf_est as a function                                  | Compile it                      |
-| Compiling | error: unrecognized command line option ‘-std=c++1z’; did you mean ‘-std=c++11’? | Upgrade your compiler |
-| Compiling | fatal error: vectorclass/vectorclass.h: No such file or directory                | Download the vectorclass library |
+| Executing | "Attempt to execute SCRIPT acf_est as a function"                                  | Compile it                      |
+| Executing | It gives the wrong answer                | Check that you run the binary on the machine it was compiled. Otherwise it may be a bug. |
+| Compiling | "error: unrecognized command line option ‘-std=c++1z’; did you mean ‘-std=c++11’?" | Upgrade your compiler |
+| Compiling | "fatal error: vectorclass/vectorclass.h: No such file or directory"                | Download the vectorclass library |
 
 ## Built With
 
