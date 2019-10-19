@@ -19,6 +19,8 @@ In the table below are benchmarks against the fastest ACF implementation I could
 
 ![Bartlett estimation formula](definition.png)
 
+where *x* is the discrete input signal and *N* its number of elements.
+
 ## How
 
 It uses vectorization and parallelization (threading) to achieve these results.
