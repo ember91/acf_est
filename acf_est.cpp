@@ -4,9 +4,25 @@
  * -Wpedantic' acf_est.cpp
  */
 
+#include <algorithm>
 #include <sstream>
 #include <thread>
 #include <vector>
+
+#ifdef _WIN32
+#include <sysinfoapi.h>
+#endif
+#ifdef __linux__
+#include <fstream>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
+#endif
+#ifdef __APPLE__
+#include <sys/sysctl.h>
+#include <sys/types.h>
+#endif
 
 // Matlab mex headers
 #include "matrix.h"
@@ -129,6 +145,8 @@ mxArray* spawnThreads(const mxArray* vIn) {
   // Detect parallelism
   unsigned n_threads = detectNumberOfCores();
 
+  // printf("Detect %u CPU hardware cores\n", n_threads);
+
   // Allocate threads and their parameters
   std::vector<std::thread> threads(n_threads);
   std::vector<ThreadParams> params(n_threads);
@@ -248,22 +266,143 @@ void* calculate(const ThreadParams& p) {
 /**
  * Detect number of CPU cores
  *
+ * Fallback in case the smarter method fails
+ *
+ * \return Number of CPU cores
+ */
+unsigned detectNumberOfCoresFallback() {
+  unsigned n = std::thread::hardware_concurrency();
+
+  if (n == 0)
+    return 1;
+
+  return n;
+}
+
+/**
+ * Trim from start (in place)
+ *
+ * \param s String to trim
+ *
+ */
+inline void ltrim(std::string& s) {
+  s.erase(s.begin(), std::find_if(s.begin(), s.end(),
+                                  [](int ch) { return !std::isspace(ch); }));
+}
+
+/**
+ * Trim from start (in place)
+ *
+ * \param s String to trim
+ *
+ */
+inline void rtrim(std::string& s) {
+  s.erase(std::find_if(s.rbegin(), s.rend(),
+                       [](int ch) { return !std::isspace(ch); })
+              .base(),
+          s.end());
+}
+
+/**
+ * Trim from start and end
+ *
+ *
+ * \param s String to trim
+ *
+ */
+inline void trim(std::string& s) {
+  ltrim(s);
+  rtrim(s);
+}
+
+/**
+ * Detect number of physical CPU cores
+ *
+ * \note From Boost library, to lessen the dependency on a heavy library
+ *
  * \return Number of CPU cores
  *
  */
 unsigned detectNumberOfCores() {
-  // TODO: This is a poor man's core detector :(
+#ifdef _WIN32
+  unsigned cores = 0;
+  DWORD size = 0;
 
-  /** Number of threads to spawn. Assume SMT for now. */
-  unsigned n = std::thread::hardware_concurrency();
+  GetLogicalProcessorInformation(NULL, &size);
+  if (ERROR_INSUFFICIENT_BUFFER != GetLastError())
+    return 0;
+  const size_t Elements = size / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
 
-  // Sanity check
-  if (n == 0)
-    n = 1;
+  std::vector<SYSTEM_LOGICAL_PROCESSOR_INFORMATION> buffer(Elements);
+  if (GetLogicalProcessorInformation(&buffer.front(), &size) == FALSE)
+    return 0;
 
-  // Assume SMT (hyperthreading) if the number of threads are even
-  if (n % 2 == 0)
-    n /= 2;
+  for (size_t i = 0; i < Elements; ++i) {
+    if (buffer[i].Relationship == RelationProcessorCore)
+      ++cores;
+  }
+  return cores;
+#elif defined(__linux__)
+  try {
+    std::ifstream proc_cpuinfo("/proc/cpuinfo");
 
-  return n;
+    const std::string physical_id("physical id"), core_id("core id");
+
+    typedef std::pair<unsigned, unsigned> core_entry;  // [physical ID, core id]
+
+    std::set<core_entry> cores;
+
+    core_entry current_core_entry;
+
+    const std::string trim_chars = "\t\n\v\f\r ";
+
+    std::string line;
+    while (std::getline(proc_cpuinfo, line)) {
+      if (line.empty())
+        continue;
+
+      size_t idx = line.find(':');
+
+      if (idx == std::string::npos)
+        return detectNumberOfCoresFallback();
+
+      if (line.find(':', idx + 1) != std::string::npos)
+        return detectNumberOfCoresFallback();
+
+      std::string key = line.substr(0, idx);
+      std::string value = line.substr(idx + 1);
+
+      trim(key);
+      trim(value);
+
+      if (key == physical_id) {
+        current_core_entry.first = std::stoul(value);
+        continue;
+      }
+
+      if (key == core_id) {
+        current_core_entry.second = std::stoul(value);
+        cores.insert(current_core_entry);
+        continue;
+      }
+    }
+
+    if (cores.size() != 0)
+      return cores.size();
+
+    return detectNumberOfCoresFallback();
+  } catch (...) {
+    return detectNumberOfCoresFallback();
+  }
+#elif defined(__APPLE__)
+  int n;
+  size_t size = sizeof(n);
+
+  if (sysctlbyname("hw.physicalcpu", &n, &size, NULL, 0) == 0)
+    return n;
+
+  return detectNumberOfCoresFallback;
+#else
+  return detectNumberOfCoresFallback();
+#endif
 }
