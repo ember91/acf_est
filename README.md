@@ -32,7 +32,7 @@ Install Agner Fog's [vectorclass](https://github.com/vectorclass) library. It's 
 cd acf_est
 git clone https://github.com/vectorclass/version2.git
 ```
-In matlab, compile this into mex with GCC or clang as
+In matlab, compile this into mex with GCC or Clang as
 ```
 mex CXXFLAGS='$CXXFLAGS -std=c++1z -O3 -march=native -Wall -Wextra -Wpedantic' acf_est.cpp
 ```
