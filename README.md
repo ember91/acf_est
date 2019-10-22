@@ -4,19 +4,22 @@ Quite fast Matlab mex Bartlett autocorrelation function estimator written in C++
 
 ## Why
 
-I wanted to write the fastest on-CPU Bartlett ACF estimator in existence. Just for fun. 
+I wanted to write the fastest on-CPU Bartlett Autocorrelation Function *(ACF)* estimator in existence. Just for fun. 
 
 ## Benchmarks
 
 In the table below are benchmarks against the fastest ACF implementation I could write in Matlab. The test was performed with a 2^15 x 4 input matrix. Remember that these speedups are for sufficiently large input vectors. 
-| Computer               | Instruction set | CPU Cores | Speedup floats | Speedup doubles |
-|------------------------|-----------------|-----------|----------------|-----------------|
-| Old stupid laptop      | AVX2            | 4         | 70             | 35              |
-| New fancy megacomputer | AVX512          | 20        | 500            | 300             |
+
+| Computer               | Base frequency (GHz) | Instruction set | CPU cores | Speedup floats | Speedup doubles |
+|------------------------|---------------------:|-----------------|----------:|---------------:|----------------:|
+| Old stupid laptop      | 2.1                  | AVX2            | 4         | 70             | 35              |
+| New fancy megacomputer | 2.2                  | AVX512          | 20        | 500            | 300             |
 
 ## Definition
 
 ![Bartlett estimation formula](definition.png)
+
+where *x* is the discrete input signal and *N* its number of elements.
 
 ## How
 
@@ -35,7 +38,7 @@ mex CXXFLAGS='$CXXFLAGS -std=c++1z -O3 -march=native -Wall -Wextra -Wpedantic' a
 ```
 This ensures it compiles with high optimizations and vector instructions if available.
 
-## Running the tests and benchmarks
+## Running tests and benchmarks
 
 In Matlab, go to the project directory. Run *test.m*. It will both check for errors and run benchmarks.
 
@@ -57,8 +60,12 @@ for more details about command parameters and specifics.
 
 ## Common errors
 
-Attempt to execute SCRIPT acf_est as a function - Compile it!
-fatal error: vectorclass/vectorclass.h: No such file or directory - Download the vectorclass library!
+| When      | Error | Solution |
+|-----------|---------------|----------|
+| Executing | "Attempt to execute SCRIPT acf_est as a function"                                  | Compile it                      |
+| Executing | It gives the wrong answer                | Check that you run the binary on the machine it was compiled. Otherwise it may be a bug. |
+| Compiling | "error: unrecognized command line option ‘-std=c++1z’; did you mean ‘-std=c++11’?" | Upgrade your compiler |
+| Compiling | "fatal error: vectorclass/vectorclass.h: No such file or directory"                | Download the vectorclass library |
 
 ## Built With
 
