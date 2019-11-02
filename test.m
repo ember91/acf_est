@@ -22,6 +22,8 @@ function test()
     tester(double(randn(2^4 - 1, 7)));
     tester(single(randn(2^15, 4)));
     tester(double(randn(2^15, 4)));
+    tester(single(randn(2^17, 12)));
+    tester(double(randn(2^17, 12)));
 end
 
 % Run ground truth and estimator function. 
