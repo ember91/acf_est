@@ -12,7 +12,7 @@ In the table below are benchmarks against the fastest ACF implementation I could
 
 | Computer               | Base frequency (GHz) | Instruction set | CPU cores | Speedup floats | Speedup doubles |
 |------------------------|---------------------:|-----------------|----------:|---------------:|----------------:|
-| Old stupid laptop      | 2.1                  | AVX2            | 4         | 130            | 60              |
+| Old stupid laptop      | 2.1                  | AVX2            | 4         | 90             | 40              |
 | New fancy megacomputer | 2.2                  | AVX512          | 20        | 1100           | 360             |
 
 ## Definition
