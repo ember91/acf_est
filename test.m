@@ -1,5 +1,7 @@
 % Run tests and benchmarks
 function test()
+    tester(single(randn(0, 1)));
+    tester(double(randn(0, 1)));
     tester(single(randn(2^4, 1)));
     tester(double(randn(2^4, 1)));
     tester(single(randn(1, 2^4)));
@@ -64,7 +66,7 @@ function tester(x)
   % Display results
   disp(['Elapsed time ' num2str(t1) ' ' num2str(t2) 's']);
   disp(['Speedup ' num2str(t1 / t2)]);
-  disp(['Error ' num2str(err2) ' <= ' num2str(err1)]);
+  disp(['Error ' num2str(err2) ' ≤ ' num2str(err1)]);
   if err2 > err1
       error('Results differ :(');
   end

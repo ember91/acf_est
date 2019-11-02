@@ -5,31 +5,25 @@
  */
 
 #include <algorithm>
+#include <atomic>
+#include <cmath>
+#include <iostream>
 #include <sstream>
 #include <thread>
 #include <vector>
-
-#ifdef _WIN32
-#include <sysinfoapi.h>
-#endif
-#ifdef __linux__
-#include <fstream>
-#include <set>
-#include <string>
-#include <utility>
-#include <vector>
-#endif
-#ifdef __APPLE__
-#include <sys/sysctl.h>
-#include <sys/types.h>
-#endif
 
 // Matlab mex headers
 #include "matrix.h"
 #include "mex.h"
 
-// Agner Fog's vectorclass library headers
+// Agner Fog's vectorclass library
 #include "vectorclass/vectorclass.h"
+
+// TODO list:
+// * restrict
+// * const
+// * Add debug mode that printouts and sets SINGLE_THREAD_MODE to 1?
+// * Rename N to M and C to N
 
 /** Set to 1 to spawn 0 threads. May be useful when debugging. */
 #define SINGLE_THREAD_MODE 0
@@ -52,14 +46,28 @@ typedef float vec_single_t;
 typedef double vec_double_t;
 #endif
 
+/** Divide work into work items */
+struct WorkItem {
+  mwSize nStart; /**< Row start index (inclusive) */
+  mwSize nEnd;   /**< Row end index (exclusive) */
+  mwSize cStart; /**< Column start index (inclusive) */
+  mwSize cEnd;   /**< Column end index (exclusive) */
+};
+
 /** Parameters to spawned threads */
 struct ThreadParams {
-  unsigned n_threads; /**< Total number of worker threads */
-  unsigned index;     /**< Thread index (0 <= index < n_threads) */
-  mwSize N; /**< Number of rows in matrix (Size of each ACF estimation) */
-  mwSize C; /**< Number of columns in matrix (Number of ACFs to estimate) */
-  void* x;  /**< Input matrix [N, C] */
-  void* y;  /**< Output matrix [(2*N-1), C] */
+  /** Number of rows in matrix (Size of each ACF estimation) */
+  mwSize N;
+  /** Number of columns in matrix (Number of ACFs to estimate) */
+  mwSize C;
+  /** Input matrix [N, C] */
+  void* x;
+  /** Output matrix [(2*N-1), C] */
+  void* y;
+  /** Current (global) index in work queue */
+  std::atomic<size_t>* workQueueIdx;
+  /** Work queue */
+  std::vector<WorkItem>* workQueue;
 };
 
 void mexFunction(int nlhs, mxArray** plhs, int nrhs, const mxArray** prhs);
@@ -67,11 +75,8 @@ void checkArguments(int nlhs, mxArray** plhs, int nrhs, const mxArray** prhs);
 mxArray* spawnThreads(const mxArray* vIn);
 template <typename Tvec, typename Tscal>
 void* calculate(const ThreadParams& p);
-unsigned detectNumberOfCores();
-
-// TODO list:
-// * Better detection of instruction sets such as FMA...
-// * Calculate vectorized average?
+std::vector<WorkItem> divideWork(mwSize N, mwSize C, mwSize workItemsPerCol);
+const WorkItem* nextWorkItem(const ThreadParams& p);
 
 /**
  * Matlab mex entry function. Calculate Bartlett estimate of auto correlation
@@ -143,40 +148,42 @@ mxArray* spawnThreads(const mxArray* vIn) {
     std::swap(C, N);
 
   // Detect parallelism
-  unsigned n_threads = detectNumberOfCores();
+  unsigned nThreads = std::thread::hardware_concurrency();
+  if (nThreads == 0)
+    nThreads = 1;
 
-  // printf("Detect %u CPU hardware cores\n", n_threads);
+  // Fill work queue
+  auto workItems = divideWork(N, C, nThreads);
 
-  // Allocate threads and their parameters
-  std::vector<std::thread> threads(n_threads);
-  std::vector<ThreadParams> params(n_threads);
+  // Set parameters passed to threads
+  ThreadParams params;
+  std::atomic<size_t> workQueueIdx = 0;
+  params.N = N;
+  params.C = C;
+  params.x = mxGetData(vIn);
+  params.y = mxGetData(vOut);
+  params.workQueue = &workItems;
+  params.workQueueIdx = &workQueueIdx;
 
-  // Set parameters for each thread
-  for (unsigned i = 0; i < n_threads; ++i) {
-    params[i].n_threads = n_threads;
-    params[i].index = i;
-    params[i].N = N;
-    params[i].C = C;
-    params[i].x = mxGetData(vIn);
-    params[i].y = mxGetData(vOut);
-  }
+  // Allocate threads
+  std::vector<std::thread> threads(nThreads);
 
   // Start all threads
   try {
-    for (unsigned i = 0; i < n_threads; ++i) {
+    for (unsigned i = 0; i < nThreads; ++i) {
 #if SINGLE_THREAD_MODE == 0
       if (mxIsSingle(vIn)) {
         threads[i] =
-            std::move(std::thread(calculate<vec_single_t, float>, params[i]));
+            std::move(std::thread(calculate<vec_single_t, float>, params));
       } else {
         threads[i] =
-            std::move(std::thread(calculate<vec_double_t, double>, params[i]));
+            std::move(std::thread(calculate<vec_double_t, double>, params));
       }
 #else
       if (mxIsSingle(vIn))
-        calculate<vec_single_t, float>(params[i]);
+        calculate<vec_single_t, float>(params);
       else
-        calculate<vec_double_t, double>(params[i]);
+        calculate<vec_double_t, double>(params);
 #endif
     }
   } catch (const std::exception& ex) {
@@ -188,7 +195,7 @@ mxArray* spawnThreads(const mxArray* vIn) {
 // Wait for all threads to finish
 #if SINGLE_THREAD_MODE == 0
   try {
-    for (unsigned i = 0; i < n_threads; ++i)
+    for (unsigned i = 0; i < nThreads; ++i)
       threads[i].join();
   } catch (const std::exception& ex) {
     std::stringstream ss;
@@ -206,57 +213,57 @@ mxArray* spawnThreads(const mxArray* vIn) {
  * \tparam Tvec  Vector type to use when calculating
  * \tparam Tscal Scalar type to use when calculating
  * \param p      Thread parameters
- * \return Nothing
+ * \return NULL
  *
  */
 template <typename Tvec, typename Tscal>
 void* calculate(const ThreadParams& p) {
-  // Convert data pointers
-  Tscal* x = (Tscal*)p.x;
-  Tscal* y = (Tscal*)p.y;
+  // Cast data pointers
+  Tscal* x = static_cast<Tscal*>(p.x);
+  Tscal* y = static_cast<Tscal*>(p.y);
 
-  // Iterate through each column
-  for (mwSize c = 0; c < p.C; ++c) {
-    // Iterate through each input index.
-    // First, make the first thread calculate r[0], the second r[1] ...
-    // Then increase by the number of threads so the first thread now
-    // calculates r[0 + n_threads]. For the next column, make the first
-    // thread start at r[1] instead of at r[0] as earlier, to make it more
-    // fair, since higher indices of r in general are easier.
-    for (mwSize k = (c + p.index) % p.n_threads; k < p.N; k += p.n_threads) {
-      Tscal s; /**< Current sum */
+  // Get next work item
+  const WorkItem* w = nullptr;
+  while ((w = nextWorkItem(p)) != nullptr) {
+    // Iterate through columns
+    for (mwSize c = w->cStart; c < w->cEnd; ++c) {
+      // Iterate through rows
+      for (mwSize k = w->nStart; k < w->nEnd; ++k) {
+        Tscal s; /**< Current sum */
 #if VECTORIZATION == 0
-      s = 0.0;
-      // Simplest realization
-      for (size_t n = 0; n < p.N - k; ++n)
-        s += x[n] * x[n + k];
+        s = 0.0;
+
+        // Simplest realization
+        for (size_t n = 0; n < p.N - k; ++n)
+          s += x[n] * x[n + k];
 #else
-      int lim = (int)p.N - (int)k - Tvec::size() + 1; /**< Iteration limit */
-      int n;                                          /**< Iteration index */
+        int lim = (int)p.N - (int)k - Tvec::size() + 1; /**< Iteration limit */
+        int n;                                          /**< Iteration index */
 
-      // Use a sum vector and do a horizontal add when finished
-      Tvec sv(0);
-      // Vectorized loop
-      for (n = 0; n < lim; n += Tvec::size()) {
-        // Read two double vectors offset by k from memory
-        Tvec v1 = Tvec().load(x + c * p.N + n);
-        Tvec v2 = Tvec().load(x + c * p.N + n + k);
+        // Use a sum vector and do a horizontal add when finished
+        Tvec sv(0);
+        // Vectorized loop
+        for (n = 0; n < lim; n += Tvec::size()) {
+          // Read two double vectors offset by k from memory
+          Tvec v1 = Tvec().load(x + c * p.N + n);
+          Tvec v2 = Tvec().load(x + c * p.N + n + k);
 
-        // Multiply and sum
-        sv = mul_add(v1, v2, sv);
-      }
+          // Multiply and sum
+          sv = mul_add(v1, v2, sv);
+        }
 
-      // We're finished. Time to sum.
-      s = horizontal_add(sv);
+        // We're finished. Time to sum.
+        s = horizontal_add(sv);
 
-      // Non-vectorized loop for the remaining vector size - 1 elements
-      for (; n < (int)(p.N - k); ++n)
-        s += x[c * p.N + n] * x[c * p.N + n + k];
+        // Non-vectorized loop for the remaining vector size - 1 elements
+        for (; n < (int)(p.N - k); ++n)
+          s += x[c * p.N + n] * x[c * p.N + n + k];
 #endif
 
-      // Sum is ready. Write only half of spectra due to symmetry and for
-      // efficency
-      y[c * p.N + k] = s / p.N;
+        // Sum is ready. Write only half of spectra due to symmetry and for
+        // efficency
+        y[c * p.N + k] = s / p.N;
+      }
     }
   }
 
@@ -264,145 +271,78 @@ void* calculate(const ThreadParams& p) {
 }
 
 /**
- * Detect number of CPU cores
+ * Divide work into work items into suitable size
  *
- * Fallback in case the smarter method fails
+ * \param N        Number of rows
+ * \param C        Number of columns
+ * \param nThreads Number of worker threads
  *
- * \return Number of CPU cores
+ * \return List with work items
  */
-unsigned detectNumberOfCoresFallback() {
-  unsigned n = std::thread::hardware_concurrency();
+std::vector<WorkItem> divideWork(mwSize N, mwSize C, mwSize nThreads) {
+  // Approximate number of work items per column as the number of
+  // multiplications that takes 1 ms on a CPU with nThreads cores. Assume a
+  // clock speed of 2GHz and a cost of floating point multiplication as 1 clock
+  // cycle. There are in N*(N+1)/2 multiplications for one column.
+  mwSize itemsPerCol = N * (N + 1) / (4 * nThreads * 1000000);
+  if (itemsPerCol == 0)
+    itemsPerCol = 1;
 
-  if (n == 0)
-    return 1;
-
-  return n;
-}
-
-/**
- * Trim from start (in place)
- *
- * \param s String to trim
- *
- */
-inline void ltrim(std::string& s) {
-  s.erase(s.begin(), std::find_if(s.begin(), s.end(),
-                                  [](int ch) { return !std::isspace(ch); }));
-}
-
-/**
- * Trim from start (in place)
- *
- * \param s String to trim
- *
- */
-inline void rtrim(std::string& s) {
-  s.erase(std::find_if(s.rbegin(), s.rend(),
-                       [](int ch) { return !std::isspace(ch); })
-              .base(),
-          s.end());
-}
-
-/**
- * Trim from start and end
- *
- *
- * \param s String to trim
- *
- */
-inline void trim(std::string& s) {
-  ltrim(s);
-  rtrim(s);
-}
-
-/**
- * Detect number of physical CPU cores
- *
- * \note From Boost library, to lessen the dependency on a heavy library
- *
- * \return Number of CPU cores
- *
- */
-unsigned detectNumberOfCores() {
-#ifdef _WIN32
-  unsigned cores = 0;
-  DWORD size = 0;
-
-  GetLogicalProcessorInformation(NULL, &size);
-  if (ERROR_INSUFFICIENT_BUFFER != GetLastError())
-    return 0;
-  const size_t Elements = size / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
-
-  std::vector<SYSTEM_LOGICAL_PROCESSOR_INFORMATION> buffer(Elements);
-  if (GetLogicalProcessorInformation(&buffer.front(), &size) == FALSE)
-    return 0;
-
-  for (size_t i = 0; i < Elements; ++i) {
-    if (buffer[i].Relationship == RelationProcessorCore)
-      ++cores;
+  // Preallocate heavier floating point calculations
+  std::vector<std::pair<mwSize, mwSize>> lim(itemsPerCol);  // Limits
+  for (unsigned n = 0; n < itemsPerCol; ++n) {
+    // Divide into itemsPerCol work items for each column
+    // such that all work items result in approximately the same number of
+    // multiplications.
+    mwSize a = (n == 0 ? 0 : lim[n - 1].second);  // a is the previous b
+    double sqrtArg =
+        std::max(0.0, a * a - 2 * N * a + N * N -
+                          static_cast<double>(N * N) / itemsPerCol);
+    mwSize b = (n == itemsPerCol - 1
+                    ? N
+                    : N - static_cast<mwSize>(std::ceil(std::sqrt(sqrtArg))));
+    lim[n] = std::make_pair(a, b);
   }
-  return cores;
-#elif defined(__linux__)
-  try {
-    std::ifstream proc_cpuinfo("/proc/cpuinfo");
 
-    const std::string physical_id("physical id"), core_id("core id");
-
-    typedef std::pair<unsigned, unsigned> core_entry;  // [physical ID, core id]
-
-    std::set<core_entry> cores;
-
-    core_entry current_core_entry;
-
-    const std::string trim_chars = "\t\n\v\f\r ";
-
-    std::string line;
-    while (std::getline(proc_cpuinfo, line)) {
-      if (line.empty())
-        continue;
-
-      size_t idx = line.find(':');
-
-      if (idx == std::string::npos)
-        return detectNumberOfCoresFallback();
-
-      if (line.find(':', idx + 1) != std::string::npos)
-        return detectNumberOfCoresFallback();
-
-      std::string key = line.substr(0, idx);
-      std::string value = line.substr(idx + 1);
-
-      trim(key);
-      trim(value);
-
-      if (key == physical_id) {
-        current_core_entry.first = std::stoul(value);
-        continue;
-      }
-
-      if (key == core_id) {
-        current_core_entry.second = std::stoul(value);
-        cores.insert(current_core_entry);
-        continue;
-      }
+  // Make work items from precalculations
+  std::vector<WorkItem> workItems(itemsPerCol * C);
+  for (unsigned c = 0; c < C; ++c) {
+    for (unsigned n = 0; n < itemsPerCol; ++n) {
+      WorkItem& w = workItems[c * itemsPerCol + n];
+      w.cStart = c;
+      w.cEnd = w.cStart + 1;
+      w.nStart = lim[n].first;
+      w.nEnd = lim[n].second;
     }
-
-    if (cores.size() != 0)
-      return cores.size();
-
-    return detectNumberOfCoresFallback();
-  } catch (...) {
-    return detectNumberOfCoresFallback();
   }
-#elif defined(__APPLE__)
-  int n;
-  size_t size = sizeof(n);
 
-  if (sysctlbyname("hw.physicalcpu", &n, &size, NULL, 0) == 0)
-    return n;
+  return workItems;
+}
 
-  return detectNumberOfCoresFallback;
-#else
-  return detectNumberOfCoresFallback();
-#endif
+/**
+ * Get a new work item, or nothing
+ *
+ * \param p Thread parameters
+ *
+ * \return Pointer to work item, or NULL
+ *
+ */
+const WorkItem* nextWorkItem(const ThreadParams& p) {
+  // Expected work queue index.
+  size_t queueIdxExp = p.workQueueIdx->load(std::memory_order_relaxed);
+
+  // CAS
+  while (!p.workQueueIdx->compare_exchange_weak(queueIdxExp, queueIdxExp + 1,
+                                                std::memory_order_release,
+                                                std::memory_order_relaxed)) {
+    // Do nothing
+  }
+
+  // Check if finished
+  if (queueIdxExp >= p.workQueue->size()) {
+    return nullptr;
+  }
+
+  // Get unique and valid work item
+  return &(*p.workQueue)[queueIdxExp];
 }
