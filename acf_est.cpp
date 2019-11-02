@@ -20,7 +20,6 @@
 #include "vectorclass/vectorclass.h"
 
 // TODO list:
-// * restrict
 // * Add debug mode that printouts and sets SINGLE_THREAD_MODE to 1?
 // * Rename N to M and C to N
 
@@ -222,8 +221,8 @@ mxArray* spawnThreads(const mxArray* vIn) {
 template <typename Tvec, typename Tscal>
 void* calculate(const ThreadParams& p) {
   // Cast data pointers
-  const Tscal* x = static_cast<const Tscal*>(p.x);
-  Tscal* y = static_cast<Tscal*>(p.y);
+  const Tscal* __restrict__ x = static_cast<const Tscal*>(p.x);
+  Tscal* __restrict__ y = static_cast<Tscal*>(p.y);
 
   // Get next work item
   const WorkItem* w = nullptr;
@@ -332,7 +331,7 @@ std::vector<WorkItem> divideWork(mwSize N, mwSize C, mwSize nThreads) {
  */
 const WorkItem* nextWorkItem(const ThreadParams& p) {
   // Expected work queue index.
-  size_t queueIdxExp = p.workQueueIdx->load(std::memory_order_relaxed);
+  auto queueIdxExp = p.workQueueIdx->load(std::memory_order_relaxed);
 
   // CAS
   while (!p.workQueueIdx->compare_exchange_weak(queueIdxExp, queueIdxExp + 1,
