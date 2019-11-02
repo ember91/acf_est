@@ -21,7 +21,6 @@
 
 // TODO list:
 // * restrict
-// * const
 // * Add debug mode that printouts and sets SINGLE_THREAD_MODE to 1?
 // * Rename N to M and C to N
 
@@ -48,10 +47,14 @@ typedef double vec_double_t;
 
 /** Divide work into work items */
 struct WorkItem {
-  mwSize nStart; /**< Row start index (inclusive) */
-  mwSize nEnd;   /**< Row end index (exclusive) */
-  mwSize cStart; /**< Column start index (inclusive) */
-  mwSize cEnd;   /**< Column end index (exclusive) */
+  /** Row start index (inclusive) */
+  mwSize nStart;
+  /** Row end index (exclusive) */
+  mwSize nEnd;
+  /** Column start index (inclusive) */
+  mwSize cStart;
+  /** Column end index (exclusive) */
+  mwSize cEnd;
 };
 
 /** Parameters to spawned threads */
@@ -61,7 +64,7 @@ struct ThreadParams {
   /** Number of columns in matrix (Number of ACFs to estimate) */
   mwSize C;
   /** Input matrix [N, C] */
-  void* x;
+  const void* x;
   /** Output matrix [(2*N-1), C] */
   void* y;
   /** Current (global) index in work queue */
@@ -219,7 +222,7 @@ mxArray* spawnThreads(const mxArray* vIn) {
 template <typename Tvec, typename Tscal>
 void* calculate(const ThreadParams& p) {
   // Cast data pointers
-  Tscal* x = static_cast<Tscal*>(p.x);
+  const Tscal* x = static_cast<const Tscal*>(p.x);
   Tscal* y = static_cast<Tscal*>(p.y);
 
   // Get next work item
