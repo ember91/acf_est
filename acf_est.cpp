@@ -26,7 +26,17 @@
 /** Set to 1 to spawn 0 threads. May be useful when debugging. */
 #define SINGLE_THREAD_MODE 0
 
+/** Set to enable vectorized instructions */
 #define VECTORIZATION 1
+
+// Handle restrict keyword
+#if defined __GNUC__ || defined __clang__
+#define RESTRICT __restrict__
+#elif defined(MSC_VER)
+#define RESTRICT __restrict
+#else
+#define RESTRICT
+#endif
 
 // Detect instruction set and set vector accordingly
 #if INSTRSET >= 10  // AVX512VL
@@ -221,8 +231,8 @@ mxArray* spawnThreads(const mxArray* vIn) {
 template <typename Tvec, typename Tscal>
 void* calculate(const ThreadParams& p) {
   // Cast data pointers
-  const Tscal* __restrict__ x = static_cast<const Tscal*>(p.x);
-  Tscal* __restrict__ y = static_cast<Tscal*>(p.y);
+  const Tscal* RESTRICT x = static_cast<const Tscal*>(p.x);
+  Tscal* RESTRICT y = static_cast<Tscal*>(p.y);
 
   // Get next work item
   const WorkItem* w = nullptr;
