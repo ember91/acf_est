@@ -39,9 +39,9 @@ mex CXXFLAGS='$CXXFLAGS -std=c++1z -O3 -march=native -Wall -Wextra -Wpedantic' a
 ```
 or with MSVC as
 ```
-mex CXXFLAGS='$CXXFLAGS /std:c++17 /O2 /arch:AVX512 /Wall' acf_est.cpp
+mex CXXFLAGS='$CXXFLAGS /std:c++17 /O2 /arch:<simd> /Wall' acf_est.cpp
 ```
-This ensures it compiles with high optimizations and vector instructions if available.
+where `<simd>` may be e.g. `AVX2` or `AVX512`.
 
 ## Running tests and benchmarks
 
@@ -67,10 +67,10 @@ for more details about command parameters and specifics.
 
 | When      | Error | Solution |
 |-----------|---------------|----------|
-| Executing | "Attempt to execute SCRIPT acf_est as a function"                                  | Compile it                      |
-| Executing | It gives the wrong answer                | Check that you run the binary on the machine it was compiled. Otherwise it may be a bug. |
 | Compiling | "error: unrecognized command line option ‘-std=c++1z’; did you mean ‘-std=c++11’?" | Upgrade your compiler |
 | Compiling | "fatal error: vectorclass/vectorclass.h: No such file or directory"                | Download the vectorclass library |
+| Executing | "Attempt to execute SCRIPT acf_est as a function"                                  | Compile it                      |
+| Executing | It gives the wrong answer                | Check that you run the binary on the machine it was compiled. Otherwise it may be a bug. |
 
 ## Built With
 
