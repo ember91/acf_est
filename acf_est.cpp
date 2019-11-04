@@ -21,7 +21,8 @@
 
 // TODO list:
 // * Add debug mode that printouts and sets SINGLE_THREAD_MODE to 1?
-// * Test on windows
+// * Update vectorclass version?
+// * Use vectorclass instructionset detection
 // * Makefile?
 
 /** Set to 1 to spawn 0 threads and calculate everything in main thread. May be
