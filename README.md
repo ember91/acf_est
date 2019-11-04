@@ -8,7 +8,7 @@ I wanted to write the fastest on-CPU Bartlett Autocorrelation Function *(ACF)* e
 
 ## Benchmarks
 
-In the table below are benchmarks against the fastest ACF implementation I could write in Matlab. The test was performed with a 2^17 x 8 input matrix. Remember that these speedups are for sufficiently large input vectors. 
+In the table below are benchmarks against the fastest ACF implementation I could write in Matlab. The test was performed with a 2<sup>17</sup> x 8 input matrix. Remember that these speedups are for sufficiently large input vectors. 
 
 | Computer               | Base frequency (GHz) | Instruction set | CPU cores | Speedup floats | Speedup doubles |
 |------------------------|---------------------:|-----------------|----------:|---------------:|----------------:|
@@ -32,7 +32,7 @@ Install Agner Fog's [vectorclass](https://github.com/vectorclass) library. It's 
 cd acf_est
 git clone https://github.com/vectorclass/version2.git
 ```
-In matlab, compile this into mex with GCC or Clang as
+In matlab, compile this into mex with GCC as
 ```
 mex CXXFLAGS='$CXXFLAGS -std=c++1z -O3 -march=native -Wall -Wextra -Wpedantic' acf_est.cpp
 ```
