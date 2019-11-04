@@ -8,12 +8,12 @@ I wanted to write the fastest on-CPU Bartlett Autocorrelation Function *(ACF)* e
 
 ## Benchmarks
 
-In the table below are benchmarks against the fastest ACF implementation I could write in Matlab. The test was performed with a 2<sup>17</sup> x 8 input matrix. Remember that these speedups are for sufficiently large input vectors. 
+In the table below are benchmarks against the fastest ACF implementation I could write in Matlab. The test was compiled with GCC 7.4.0 and executed with a randomly generated 2<sup>17</sup> x 8 matrix. Remember that these speedups are for sufficiently large input vectors. 
 
-| Computer               | Base frequency (GHz) | Instruction set | CPU cores | Speedup floats | Speedup doubles |
-|------------------------|---------------------:|-----------------|----------:|---------------:|----------------:|
-| Old stupid laptop      | 2.1                  | AVX2            | 4         | 90             | 40              |
-| New fancy megacomputer | 2.2                  | AVX512          | 20        | 1100           | 360             |
+| Computer               | Base frequency (GHz) | Operating system  | Instruction set | CPU cores | Speedup floats | Speedup doubles |
+|------------------------|---------------------:|-------------------|-----------------|----------:|---------------:|----------------:|
+| Old stupid laptop      | 2.1                  | Ubuntu 18.04      | AVX2            | 4         | 90             | 40              |
+| New fancy megacomputer | 2.2                  | Ubuntu MATE 18.04 | AVX512          | 20        | 1100           | 360             |
 
 ## Definition
 
