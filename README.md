@@ -31,6 +31,7 @@ Install Agner Fog's [vectorclass](https://github.com/vectorclass) library. It's 
 ```
 cd acf_est
 git clone https://github.com/vectorclass/version2.git
+mv version2 vectorclass
 ```
 In matlab, compile this into mex with GCC as
 ```
