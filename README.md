@@ -2,7 +2,7 @@
 
 Quite fast Matlab mex Bartlett autocorrelation function estimator written in C++.
 
-This was a fun project to do. The goal was to make the fastest autocorrelation estimator possible. So I made something really fast. It uses vectorization and multithreading for maximum performance. Unfortunately, I realized that doing autocorrelation function estimation by transforming the signal, multiplying the transform with its conjugate and then reverse transforming back is much faster. I like the code I wrote, though.
+This was a fun project to do. The goal was to make the fastest autocorrelation estimator possible. So I made something really fast. It uses vectorization and multithreading for maximum performance. Unfortunately, I realized that doing autocorrelation function estimation by Fourier transforming the signal, multiplying the transform with its conjugate and then reverse transforming back is much faster. I like the code I wrote, though.
 
 ## Definition
 
